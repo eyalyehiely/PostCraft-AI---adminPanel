@@ -1,12 +1,11 @@
 'use client'
 
-import * as React from 'react'
+// @ts-ignore
 import { useEffect, useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
-import { useAuth, useUser, Protect, SignedIn, SignedOut, RedirectToSignIn } from '@clerk/nextjs'
-import { deleteUser, User, getUsers } from '@/services/users'
+import { useAuth, useUser, RedirectToSignIn } from '@clerk/nextjs'
 
 import {
   Table,
@@ -20,6 +19,21 @@ import { Loader2, Users, FileText, Globe } from 'lucide-react'
 import { fetchNumPosts } from '@/services/posts/fetchNumPosts'
 import { fetchPublicPosts } from '@/services/posts/publicPosts'
 import Footer from '@/components/Footer'
+import { deleteUser, getUsers } from '@/services/posts/fetchUsers'
+
+// Define the User type with the required properties
+interface User {
+  id: string
+  firstName: string
+  lastName: string
+  email: string
+  createdAt: string
+  clerkId?: string
+  userId?: string  // Alternative property name
+  isAdmin?: boolean
+  role?: string    // For role-based admin checking
+}
+
 interface DashboardData {
   numPosts: number
   numUsers: number
@@ -63,14 +77,11 @@ export default function Dashboard() {
       ])
 
       // Check if current user is admin
-      const currentUser = users.find(u => u.clerkId === user.id)
-      console.log('Found current user:', currentUser)
-      console.log('isAdmin value:', currentUser?.isAdmin)
-      console.log('isAdmin type:', typeof currentUser?.isAdmin)
+      const currentUser = users.find((u: any) => u.clerkId === user.id || u.userId === user.id) as any
       
-      // Set admin status - check for boolean true, not string "true"
-      const adminStatus = !!currentUser?.isAdmin // or currentUser?.isAdmin === true
-      console.log('Setting isAdmin to:', adminStatus)
+      // Set admin status
+      const adminStatus = currentUser ? (!!currentUser.isAdmin || currentUser.role === 'admin') : false
+
       setIsAdmin(adminStatus)
 
       setData({
@@ -100,7 +111,6 @@ export default function Dashboard() {
   }, [searchTerm])
 
   // Add debug logging for render
-  console.log('Render - isLoaded:', isLoaded, 'isLoading:', isLoading, 'isAdmin:', isAdmin, 'isSignedIn:', isSignedIn)
 
   // Show loading while checking auth and admin status
   if (!isLoaded || isLoading || isAdmin === null) {
@@ -142,7 +152,7 @@ export default function Dashboard() {
       await deleteUser(userId, token)
       setData((prev: DashboardData) => ({
         ...prev,
-        users: prev.users.filter((user: User) => (user.id || user._id) !== userId),
+        users: prev.users.filter((user: User) => user.id !== userId),
         numUsers: prev.numUsers - 1
       }))
       toast.success('User deleted successfully')
@@ -154,7 +164,7 @@ export default function Dashboard() {
 
   // Filter users based on search term
   const filteredUsers = data.users.filter((user: User) => 
-    `${user.first_name} ${user.last_name}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    `${user.firstName} ${user.lastName}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
     user.email.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
@@ -166,7 +176,7 @@ export default function Dashboard() {
 
   // Format date helper
   const formatDate = (dateString: string | undefined | null) => {
-    console.log('Formatting date:', dateString)
+
     
     if (!dateString) return 'N/A'
     
@@ -277,24 +287,47 @@ export default function Dashboard() {
             </TableHeader>
             <TableBody>
               {currentUsers.length > 0 ? (
-                currentUsers.map((user: User) => (
-                  <TableRow key={user.id || user._id || user.clerkId}>
-                    <TableCell>{`${user.first_name || ''} ${user.last_name || ''}`}</TableCell>
-                    <TableCell>{user.email}</TableCell>
-                    <TableCell>
-                      {formatDate(user.createdAt)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => handleDeleteUser((user.id || user._id)!)}
-                      >
-                        Delete
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))
+                currentUsers.map((user: User) => {
+                  console.log('User data:', user);
+                  return (
+                    <TableRow key={user.id}>
+                      <TableCell>
+                        {(() => {
+                          // Check for various name property formats
+                          if (user.firstName && user.lastName) {
+                            return `${user.firstName} ${user.lastName}`;
+                          }
+                          if ((user as any).first_name && (user as any).last_name) {
+                            return `${(user as any).first_name} ${(user as any).last_name}`;
+                          }
+                          if ((user as any).name) {
+                            return (user as any).name;
+                          }
+                          if ((user as any).displayName) {
+                            return (user as any).displayName;
+                          }
+                          if ((user as any).username) {
+                            return (user as any).username;
+                          }
+                          return 'No name available';
+                        })()}
+                      </TableCell>
+                      <TableCell>{user.email}</TableCell>
+                      <TableCell>
+                        {formatDate(user.createdAt)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => handleDeleteUser(user.id)}
+                        >
+                          Delete
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })
               ) : (
                 <TableRow>
                   <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
