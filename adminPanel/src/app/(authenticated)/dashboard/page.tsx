@@ -104,7 +104,7 @@ export default function Dashboard() {
     
     if (isLoaded && isSignedIn && user?.id) {
       // Check if user is admin by email (replace with your admin emails)
-      const adminEmails = [process.env.NEXT_PUBLIC_ADMIN_EMAIL,process.env.NEXT_PUBLIC_ADMIN_EMAIL_2]
+      const adminEmails = [process.env.NEXT_PUBLIC_ADMIN_EMAIL,process.env.NEXT_PUBLIC_ADMIN2_EMAIL]
       const isUserAdmin = adminEmails.includes(user.emailAddresses[0]?.emailAddress || '')
       
       console.log('User email:', user.emailAddresses[0]?.emailAddress)
