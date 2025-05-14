@@ -19,7 +19,7 @@ import {
 import { Loader2, Users, FileText, Globe } from 'lucide-react'
 import { fetchNumPosts } from '@/services/posts/fetchNumPosts'
 import { fetchPublicPosts } from '@/services/posts/publicPosts'
-
+import Footer from '@/components/Footer'
 interface DashboardData {
   numPosts: number
   numUsers: number
@@ -35,9 +35,13 @@ export default function Dashboard() {
     users: []
   })
   const [isLoading, setIsLoading] = useState(true)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
   const { getToken, isLoaded, isSignedIn } = useAuth()
   const { user } = useUser()
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null)
+
+  const USERS_PER_PAGE = 10
 
   const fetchData = async () => {
     if (!isLoaded || !isSignedIn || !user?.id) {
@@ -89,6 +93,11 @@ export default function Dashboard() {
       fetchData()
     }
   }, [isLoaded, isSignedIn, user?.id, isAdmin])
+
+  // Reset to page 1 when search term changes
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchTerm])
 
   // Add debug logging for render
   console.log('Render - isLoaded:', isLoaded, 'isLoading:', isLoading, 'isAdmin:', isAdmin, 'isSignedIn:', isSignedIn)
@@ -143,7 +152,70 @@ export default function Dashboard() {
     }
   }
 
+  // Filter users based on search term
+  const filteredUsers = data.users.filter((user: User) => 
+    `${user.first_name} ${user.last_name}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    user.email.toLowerCase().includes(searchTerm.toLowerCase())
+  )
+
+  // Calculate pagination
+  const totalPages = Math.ceil(filteredUsers.length / USERS_PER_PAGE)
+  const startIndex = (currentPage - 1) * USERS_PER_PAGE
+  const endIndex = startIndex + USERS_PER_PAGE
+  const currentUsers = filteredUsers.slice(startIndex, endIndex)
+
+  // Format date helper
+  const formatDate = (dateString: string | undefined | null) => {
+    console.log('Formatting date:', dateString)
+    
+    if (!dateString) return 'N/A'
+    
+    try {
+      // Handle the format "13/05/2025 20:11:41" (DD/MM/YYYY HH:mm:ss)
+      if (dateString.includes('/')) {
+        const [datePart] = dateString.split(' ')
+        const [day, month, year] = datePart.split('/')
+        // Create ISO format: YYYY-MM-DD
+        const isoDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+        const date = new Date(isoDate)
+        
+        if (isNaN(date.getTime())) {
+          console.log('Invalid date after parsing:', dateString)
+          return 'Invalid Date'
+        }
+        
+        const formatted = date.toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric'
+        })
+        console.log('Formatted date:', formatted)
+        return formatted
+      }
+      
+      // Fallback to regular Date parsing
+      const date = new Date(dateString)
+      if (isNaN(date.getTime())) {
+        console.log('Invalid date:', dateString)
+        return 'Invalid Date'
+      }
+      
+      const formatted = date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      })
+      console.log('Formatted date:', formatted)
+      return formatted
+    } catch (error) {
+      console.error('Date formatting error:', error)
+      return 'Error'
+    }
+  }
+
   return (
+    <>
+    
     <div className="container mx-auto p-4 md:p-8">
       <h1 className="text-3xl font-bold mb-8">Dashboard</h1>
       
@@ -185,6 +257,15 @@ export default function Dashboard() {
           <CardDescription>Manage your platform users</CardDescription>
         </CardHeader>
         <CardContent>
+          <div className="mb-4">
+            <input
+              type="text"
+              placeholder="Search users by name or email..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
           <Table>
             <TableHeader>
               <TableRow>
@@ -195,26 +276,68 @@ export default function Dashboard() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.users.map((user: User) => (
-                <TableRow key={user.id || user._id || user.clerkId}>
-                  <TableCell>{`${user.first_name} ${user.last_name}`}</TableCell>
-                  <TableCell>{user.email}</TableCell>
-                  <TableCell>{new Date(user.createdAt).toLocaleDateString()}</TableCell>
-                  <TableCell className="text-right">
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => handleDeleteUser((user.id || user._id)!)}
-                    >
-                      Delete
-                    </Button>
+              {currentUsers.length > 0 ? (
+                currentUsers.map((user: User) => (
+                  <TableRow key={user.id || user._id || user.clerkId}>
+                    <TableCell>{`${user.first_name || ''} ${user.last_name || ''}`}</TableCell>
+                    <TableCell>{user.email}</TableCell>
+                    <TableCell>
+                      {formatDate(user.createdAt)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => handleDeleteUser((user.id || user._id)!)}
+                      >
+                        Delete
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                    No users found
                   </TableCell>
                 </TableRow>
-              ))}
+              )}
             </TableBody>
           </Table>
+          
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between mt-4">
+              <p className="text-sm text-muted-foreground">
+                Showing {startIndex + 1}-{Math.min(endIndex, filteredUsers.length)} of {filteredUsers.length} users
+              </p>
+              <div className="flex items-center space-x-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage((prev: number) => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                >
+                  Previous
+                </Button>
+                <span className="text-sm">
+                  Page {currentPage} of {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage((prev: number) => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
+    <Footer />
+    </>
   )
 }
