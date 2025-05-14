@@ -100,10 +100,31 @@ export default function Dashboard() {
   }
 
   useEffect(() => {
-    if (isLoaded && isSignedIn && user?.id && isAdmin === null) {
-      fetchData()
+    console.log('useEffect triggered:', { isLoaded, isSignedIn, userId: user?.id })
+    
+    if (isLoaded && isSignedIn && user?.id) {
+      // Check if user is admin by email (replace with your admin emails)
+      const adminEmails = ['eyalwork0@gmail.com']
+      const isUserAdmin = adminEmails.includes(user.emailAddresses[0]?.emailAddress || '')
+      
+      console.log('User email:', user.emailAddresses[0]?.emailAddress)
+      console.log('Setting isAdmin to:', isUserAdmin)
+      setIsAdmin(!!isUserAdmin)
+      
+      // Still fetch data but don't block on admin check
+      if (isUserAdmin) {
+        console.log('User is admin, fetching data')
+        fetchData()
+      } else {
+        console.log('User is not admin, stopping loading')
+        setIsLoading(false)
+      }
+    } else {
+      console.log('Auth not ready, setting not admin')
+      setIsAdmin(false)
+      setIsLoading(false)
     }
-  }, [isLoaded, isSignedIn, user?.id, isAdmin])
+  }, [isLoaded, isSignedIn, user?.id])
 
   // Reset to page 1 when search term changes
   useEffect(() => {
@@ -114,7 +135,7 @@ export default function Dashboard() {
 
   // Show loading while checking auth and admin status
   if (!isLoaded || isLoading || isAdmin === null) {
-    console.log('Showing loader')
+    console.log('Loading state:', { isLoaded, isLoading, isAdmin })
     return (
       <div className="flex items-center justify-center min-h-screen">
         <Loader2 className="h-8 w-8 animate-spin" />
