@@ -1,13 +1,12 @@
 'use client'
 
+import * as React from 'react'
 import { useEffect, useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
-import { generateContent } from '@/services/posts/generate'
-import { useAuth } from '@clerk/nextjs'
-import { savePost } from '@/services/posts/savePost'
-import { getUsers, getStats, deleteUser, User } from '@/services/users'
+import { useAuth, useUser, Protect, SignedIn, SignedOut, RedirectToSignIn } from '@clerk/nextjs'
+import { deleteUser, User, getUsers } from '@/services/users'
 
 import {
   Table,
@@ -18,111 +17,107 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Loader2, Users, FileText, Globe } from 'lucide-react'
+import { fetchNumPosts } from '@/services/posts/fetchNumPosts'
+import { fetchPublicPosts } from '@/services/posts/publicPosts'
+
+interface DashboardData {
+  numPosts: number
+  numUsers: number
+  publicPosts: number
+  users: User[]
+}
 
 export default function Dashboard() {
-  const [topic, setTopic] = useState('')
-  const [style, setStyle] = useState('')
-  const [content, setContent] = useState('')
-  const [isGenerating, setIsGenerating] = useState(false)
-  const [isTyping, setIsTyping] = useState(false)
-  const [showGeneratedContent, setShowGeneratedContent] = useState(false)
-  const [showSpecialRequests, setShowSpecialRequests] = useState(false)
-  const [wordLimit, setWordLimit] = useState('')
-  const [pronoun, setPronoun] = useState<'first' | 'second' | 'third' | ''>('')
-  const [users, setUsers] = useState<User[]>([])
-  const [stats, setStats] = useState({
-    totalUsers: 0,
-    totalPosts: 0,
-    publicPosts: 0
+  const [data, setData] = useState<DashboardData>({
+    numPosts: 0,
+    numUsers: 0,
+    publicPosts: 0,
+    users: []
   })
   const [isLoading, setIsLoading] = useState(true)
-  const { getToken } = useAuth()
-
-  const typeText = (text: string) => {
-    let index = 0
-    setIsTyping(true)
-    setContent('')
-    setShowGeneratedContent(true)
-
-    const typingInterval = setInterval(() => {
-      if (index < text.length) {
-        setContent(prev => prev + text[index])
-        index++
-      } else {
-        clearInterval(typingInterval)
-        setIsTyping(false)
-      }
-    }, 30)
-  }
-
-  const handleGenerate = async () => {
-    if (!topic || !style) {
-      toast.error('Please fill in both topic and writing style')
-      return
-    }
-
-    setIsGenerating(true)
-    try {
-      const token = await getToken()
-      if (!token) {
-        throw new Error('Not authenticated')
-      }
-      
-      const generatedContent = await generateContent({ topic, style, token })
-      typeText(generatedContent)
-      toast.success('Content generated successfully!')
-    } catch (error) {
-      console.error('Error:', error)
-      toast.error('Failed to generate content')
-    } finally {
-      setIsGenerating(false)
-    }
-  }
-
-  const handleSaveDraft = async () => {
-    if (!content) {
-      toast.error('No content to save')
-      return
-    }
-    try {
-      const token = await getToken()
-      if (!token) {
-        throw new Error('Not authenticated')
-      }
-      const savedPost = await savePost({ title: topic, content, style, token })
-      console.log(savedPost)
-      toast.success('Draft saved successfully!')
-    } catch (error) {
-      console.error('Error saving draft:', error)
-      toast.error('Failed to save draft')
-    }
-  }
+  const { getToken, isLoaded, isSignedIn } = useAuth()
+  const { user } = useUser()
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null)
 
   const fetchData = async () => {
+    if (!isLoaded || !isSignedIn || !user?.id) {
+      setIsLoading(false)
+      return
+    }
+
     try {
       const token = await getToken()
       if (!token) {
         throw new Error('Not authenticated')
       }
 
-      const [usersData, statsData] = await Promise.all([
+      // Fetch all data in parallel
+      const [numberPosts, users, publicPosts] = await Promise.all([
+        fetchNumPosts({ token }),
         getUsers(token),
-        getStats(token)
+        fetchPublicPosts({ token })
       ])
 
-      setUsers(usersData)
-      setStats(statsData)
+      // Check if current user is admin
+      const currentUser = users.find(u => u.clerkId === user.id)
+      console.log('Found current user:', currentUser)
+      console.log('isAdmin value:', currentUser?.isAdmin)
+      console.log('isAdmin type:', typeof currentUser?.isAdmin)
+      
+      // Set admin status - check for boolean true, not string "true"
+      const adminStatus = !!currentUser?.isAdmin // or currentUser?.isAdmin === true
+      console.log('Setting isAdmin to:', adminStatus)
+      setIsAdmin(adminStatus)
+
+      setData({
+        numPosts: numberPosts,
+        numUsers: users?.length || 0,
+        publicPosts,
+        users: users || []
+      })
     } catch (error) {
-      console.error('Error fetching data:', error)
-      toast.error('Failed to fetch dashboard data')
+      console.error('Error fetching dashboard data:', error)
+      toast.error(error instanceof Error ? error.message : 'Failed to fetch dashboard data')
+      setIsAdmin(false)
     } finally {
       setIsLoading(false)
     }
   }
 
   useEffect(() => {
-    fetchData()
-  }, [])
+    if (isLoaded && isSignedIn && user?.id && isAdmin === null) {
+      fetchData()
+    }
+  }, [isLoaded, isSignedIn, user?.id, isAdmin])
+
+  // Add debug logging for render
+  console.log('Render - isLoaded:', isLoaded, 'isLoading:', isLoading, 'isAdmin:', isAdmin, 'isSignedIn:', isSignedIn)
+
+  // Show loading while checking auth and admin status
+  if (!isLoaded || isLoading || isAdmin === null) {
+    console.log('Showing loader')
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    )
+  }
+
+  if (!isSignedIn) {
+    console.log('Not signed in, redirecting')
+    return <RedirectToSignIn />
+  }
+
+  if (!isAdmin) {
+    console.log('Access denied, isAdmin:', isAdmin)
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <p>Access denied. Admin privileges required.</p>
+      </div>
+    )
+  }
+
+  console.log('Rendering dashboard')
 
   const handleDeleteUser = async (userId: string) => {
     if (!confirm('Are you sure you want to delete this user?')) {
@@ -136,20 +131,16 @@ export default function Dashboard() {
       }
 
       await deleteUser(userId, token)
-      setUsers((prevUsers: User[]) => prevUsers.filter(user => user.id !== userId))
+      setData((prev: DashboardData) => ({
+        ...prev,
+        users: prev.users.filter((user: User) => (user.id || user._id) !== userId),
+        numUsers: prev.numUsers - 1
+      }))
       toast.success('User deleted successfully')
     } catch (error) {
       console.error('Error deleting user:', error)
-      toast.error('Failed to delete user')
+      toast.error(error instanceof Error ? error.message : 'Failed to delete user')
     }
-  }
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="h-8 w-8 animate-spin" />
-      </div>
-    )
   }
 
   return (
@@ -163,7 +154,7 @@ export default function Dashboard() {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.totalUsers}</div>
+            <div className="text-2xl font-bold">{data.numUsers}</div>
           </CardContent>
         </Card>
 
@@ -173,7 +164,7 @@ export default function Dashboard() {
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.totalPosts}</div>
+            <div className="text-2xl font-bold">{data.numPosts}</div>
           </CardContent>
         </Card>
 
@@ -183,7 +174,7 @@ export default function Dashboard() {
             <Globe className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.publicPosts}</div>
+            <div className="text-2xl font-bold">{data.publicPosts}</div>
           </CardContent>
         </Card>
       </div>
@@ -204,16 +195,16 @@ export default function Dashboard() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {users.map((user: User) => (
-                <TableRow key={user.id}>
-                  <TableCell>{`${user.firstName} ${user.lastName}`}</TableCell>
+              {data.users.map((user: User) => (
+                <TableRow key={user.id || user._id || user.clerkId}>
+                  <TableCell>{`${user.first_name} ${user.last_name}`}</TableCell>
                   <TableCell>{user.email}</TableCell>
                   <TableCell>{new Date(user.createdAt).toLocaleDateString()}</TableCell>
                   <TableCell className="text-right">
                     <Button
                       variant="destructive"
                       size="sm"
-                      onClick={() => handleDeleteUser(user.id)}
+                      onClick={() => handleDeleteUser((user.id || user._id)!)}
                     >
                       Delete
                     </Button>
@@ -226,4 +217,4 @@ export default function Dashboard() {
       </Card>
     </div>
   )
-} 
+}

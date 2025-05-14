@@ -1,57 +1,49 @@
 import { getAuth } from '@clerk/nextjs/server';
 
 export interface User {
-  id: string;
+  _id?: string;        // MongoDB uses _id
+  id?: string;         // Some may use id
+  clerkId: string;
   email: string;
-  firstName: string;
-  lastName: string;
+  first_name: string;  // API uses snake_case
+  last_name: string;   // API uses snake_case
   createdAt: string;
+  isAdmin: string;     // API returns string "true"/"false"
 }
 
 export async function getUsers(token: string): Promise<User[]> {
-  const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/users`, {
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/admin';
+  const response = await fetch(`${baseUrl}/all-users`, {
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+      'Authorization': `Bearer ${token}`
+    }
   });
 
   if (!response.ok) {
     throw new Error('Failed to fetch users');
   }
 
-  return response.json();
+  const data = await response.json();
+  
+  // Return data directly since API returns array of users
+  if (!Array.isArray(data)) {
+    console.error('API response:', data);
+    return [];
+  }
+  
+  return data;
 }
 
 export async function deleteUser(userId: string, token: string): Promise<void> {
-  const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/users/${userId}`, {
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api/admin';
+  const response = await fetch(`${baseUrl}/users/${userId}`, {
     method: 'DELETE',
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+      'Authorization': `Bearer ${token}`
+    }
   });
 
   if (!response.ok) {
     throw new Error('Failed to delete user');
   }
 }
-
-export async function getStats(token: string): Promise<{
-  totalUsers: number;
-  totalPosts: number;
-  publicPosts: number;
-}> {
-  const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/stats`, {
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to fetch stats');
-  }
-
-  return response.json();
-} 

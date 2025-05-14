@@ -3,7 +3,6 @@
 import { UserButton, useUser, useClerk } from '@clerk/nextjs'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
-import { useTheme } from 'next-themes'
 import { Label } from '@/components/ui/label'
 import { useEffect, useState } from 'react'
 import { Moon, User, Settings2 } from 'lucide-react'
@@ -16,7 +15,6 @@ import { useAuth } from '@clerk/nextjs'
 export default function SettingsPage() {
   const { user } = useUser()
   const { signOut } = useClerk()
-  const { theme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
   const [firstName, setFirstName] = useState(user?.firstName || '')
   const [lastName, setLastName] = useState(user?.lastName || '')
